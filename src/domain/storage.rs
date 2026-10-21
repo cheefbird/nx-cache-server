@@ -13,6 +13,11 @@ pub enum StorageError {
     OperationFailed,
 }
 
+pub struct Retrieved {
+    pub reader: Box<dyn AsyncRead + Send + Unpin>,
+    pub content_length: Option<u64>,
+}
+
 #[async_trait]
 pub trait StorageProvider: Send + Sync + 'static {
     /// Check if an object exists at the given hash key
@@ -28,6 +33,5 @@ pub trait StorageProvider: Send + Sync + 'static {
 
     /// Retrieve object as a stream from storage
     /// Returns NotFound error if object doesn't exist
-    async fn retrieve(&self, hash: &str)
-        -> Result<Box<dyn AsyncRead + Send + Unpin>, StorageError>;
+    async fn retrieve(&self, hash: &str) -> Result<Retrieved, StorageError>;
 }

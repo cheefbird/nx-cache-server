@@ -61,10 +61,11 @@ pub async fn retrieve_artifact<T: StorageProvider>(
 ) -> Result<impl IntoResponse, ServerError> {
     validation::validate_hash(&hash)?;
 
-    let reader = match state.storage.retrieve(&hash).await {
-        Ok(reader) => {
+    let retrieved = match state.storage.retrieve(&hash).await {
+        Ok(retrieved) => {
             record.set_outcome(Outcome::Hit);
-            reader
+            record.set_bytes(retrieved.content_length.unwrap_or(0));
+            retrieved
         }
         Err(e) => {
             if matches!(e, StorageError::NotFound) {
@@ -73,7 +74,7 @@ pub async fn retrieve_artifact<T: StorageProvider>(
             return Err(e.into());
         }
     };
-    let stream = tokio_util::io::ReaderStream::new(reader);
+    let stream = tokio_util::io::ReaderStream::new(retrieved.reader);
     let body = Body::from_stream(stream);
 
     Ok((

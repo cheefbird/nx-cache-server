@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
 import { artifact, uniqueHash } from "../support/artifacts.ts";
 import { MAX_HASH_LENGTH } from "../support/client.ts";
-import { type LogLine, requestLines } from "../support/logs.ts";
-import { startServer } from "../support/nx-cache-aws.ts";
+import { type LogLine, jsonLines, requestLines } from "../support/logs.ts";
+import { ERROR_LOG_LEVEL, startServer } from "../support/nx-cache-aws.ts";
 import {
     READ_ONLY_TOKEN,
     READ_WRITE_TOKEN,
@@ -112,6 +112,46 @@ test("a storage failure logs an ERROR request line", async () => {
     );
 
     expect(line).toMatchObject({ status: 500, outcome: "error", level: "ERROR" });
+});
+
+test("a storage failure logs exactly one ERROR line", async () => {
+    const server = await startServer(VALID_ENV);
+
+    await server.client("read-write").get(uniqueHash("one-error"));
+    const logs = await server.stop();
+
+    const errorLines = logs.stdout.split("\n").filter((line) => line.includes(ERROR_LOG_LEVEL));
+    expect(errorLines).toHaveLength(1);
+});
+
+test("a storage failure carries the hash on the S3 warning", async () => {
+    const server = await startServer(JSON_ENV);
+    const hash = uniqueHash("s3-warn");
+
+    await server.client("read-write").get(hash);
+    const lines = jsonLines((await server.stop()).stdout);
+
+    expect(lines).toContainEqual(
+        expect.objectContaining({
+            level: "WARN",
+            message: "S3 request failed",
+            operation: "get_object",
+            span: expect.objectContaining({ hash }),
+        }),
+    );
+});
+
+test("the S3 warning gives the error without a debug dump", async () => {
+    const server = await startServer(JSON_ENV);
+
+    await server.client("read-write").get(uniqueHash("s3-error-text"));
+    const warning = jsonLines((await server.stop()).stdout).find(
+        (line) => line.message === "S3 request failed",
+    );
+
+    expect(warning?.error).toEqual(expect.any(String));
+    // Debug struct syntax, e.g. `Unhandled { source: … }`.
+    expect(warning?.error).not.toContain(" { ");
 });
 
 test("tokens never reach the logs", async () => {
