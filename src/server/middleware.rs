@@ -1,7 +1,11 @@
 use crate::domain::storage::StorageProvider;
-use crate::server::{error::ServerError, AppState};
+use crate::server::{
+    error::ServerError,
+    logging::{Access, Outcome, RequestRecord},
+    validation, AppState,
+};
 use axum::{
-    extract::{Request, State},
+    extract::{rejection::PathRejection, Path, Request, State},
     http::Method,
     middleware::Next,
     response::Response,
@@ -10,12 +14,21 @@ use subtle::ConstantTimeEq;
 
 pub async fn auth_middleware<T>(
     State(state): State<AppState<T>>,
+    // `Result`, so a bad path without a token still gets 401.
+    path: Result<Path<String>, PathRejection>,
     request: Request,
     next: Next,
 ) -> Result<Response, ServerError>
 where
     T: StorageProvider,
 {
+    let record = request.extensions().get::<RequestRecord>().cloned();
+    if let (Some(record), Ok(Path(hash))) = (&record, &path) {
+        if validation::validate_hash(hash).is_ok() {
+            record.set_hash(hash);
+        }
+    }
+
     // Extract Bearer token from Authorization header
     let token = request
         .headers()
@@ -47,6 +60,14 @@ where
         return Err(ServerError::Unauthorized);
     }
 
+    if let Some(record) = &record {
+        record.set_access(if is_read_write {
+            Access::ReadWrite
+        } else {
+            Access::ReadOnly
+        });
+    }
+
     // The read-only token may only read; writes require the service access
     // token. This lets untrusted CI jobs (e.g. PR builds) use the cache
     // without being able to poison it (CVE-2025-36852 / CREEP).
@@ -57,6 +78,9 @@ where
         // than this 403, and Nx fails the task even though it treats a 403
         // itself as "not stored, carry on". Only authenticated callers get
         // here, so no untrusted body is read.
+        if let Some(record) = &record {
+            record.set_outcome(Outcome::Forbidden);
+        }
         crate::server::drain_body(request.into_body()).await;
         return Err(ServerError::Forbidden);
     }

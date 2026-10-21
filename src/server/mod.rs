@@ -1,12 +1,13 @@
 pub mod error;
 pub mod handlers;
+pub mod logging;
 pub mod middleware;
 pub mod validation;
 
 use crate::domain::{config::ServerConfig, storage::StorageProvider};
 use axum::{
     body::Body,
-    middleware::from_fn_with_state,
+    middleware::{from_fn, from_fn_with_state},
     routing::{get, put},
     Router,
 };
@@ -45,6 +46,8 @@ pub fn create_router<T: StorageProvider + Clone>(app_state: &AppState<T>) -> Rou
     Router::new()
         .route("/health", get(handlers::health_check)) // Public route - no auth required
         .merge(protected_routes)
+        // Outermost, so 401s and axum rejections are logged too.
+        .layer(from_fn(logging::request_log))
 }
 
 pub async fn run_server<T: StorageProvider + Clone>(

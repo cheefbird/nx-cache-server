@@ -19,8 +19,7 @@ struct AwsCli {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = AwsCli::parse();
 
-    // Before config validation, so warnings from the AWS region and
-    // credential chains are logged.
+    // Before validation, so AWS region/credential warnings are logged.
     let rust_log = std::env::var("RUST_LOG").ok();
     let filter = match logging::resolve_filter(rust_log.as_deref(), cli.server.debug) {
         Ok(filter) => filter,

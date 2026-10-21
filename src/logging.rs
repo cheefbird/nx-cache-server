@@ -7,20 +7,18 @@ use tracing_subscriber::{
     Layer,
 };
 
-/// Filter used when `DEBUG` is set and `RUST_LOG` is not: this project's
-/// library and binary at debug, everything else at info.
+/// `DEBUG` without `RUST_LOG`: our crates at debug, the rest at info.
 pub const DEBUG_FILTER: &str = "nx_cache_server=debug,nx_cache_aws=debug,info";
 
 const DEFAULT_FILTER: &str = "info";
 
 pub struct LogFilter {
     pub targets: Targets,
-    /// `DEBUG` was set but `RUST_LOG` took precedence.
+    /// `DEBUG` was set but `RUST_LOG` won.
     pub debug_ignored: bool,
 }
 
-/// `RUST_LOG` wins over `DEBUG`. An empty `RUST_LOG` counts as unset, since
-/// compose files often declare the variable without a value.
+/// `RUST_LOG` wins over `DEBUG`; an empty `RUST_LOG` counts as unset.
 pub fn resolve_filter(rust_log: Option<&str>, debug: bool) -> Result<LogFilter, ParseError> {
     match rust_log.filter(|value| !value.is_empty()) {
         Some(value) => Ok(LogFilter {
