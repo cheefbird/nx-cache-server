@@ -141,11 +141,7 @@ pub struct ServerConfig {
         long,
         env = "DEBUG",
         help = "Enable debug logging",
-        value_parser = clap::builder::BoolishValueParser::new(),
-        num_args = 0..=1,
-        default_value_t = false,
-        default_missing_value = "true",
-        action = clap::ArgAction::Set
+        value_parser = clap::builder::BoolishValueParser::new()
     )]
     pub debug: bool,
 

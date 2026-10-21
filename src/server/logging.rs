@@ -4,12 +4,15 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 use tracing::{Instrument, Level, Span};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Access {
+    /// No valid token.
+    #[default]
+    None,
     ReadWrite,
     ReadOnly,
 }
@@ -17,6 +20,7 @@ pub enum Access {
 impl Access {
     fn as_str(self) -> &'static str {
         match self {
+            Access::None => "none",
             Access::ReadWrite => "read_write",
             Access::ReadOnly => "read_only",
         }
@@ -65,33 +69,32 @@ impl Outcome {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct RecordFields {
     hash: Option<String>,
-    access: Option<Access>,
+    access: Access,
     outcome: Option<Outcome>,
     bytes: u64,
 }
 
 /// Filled in by inner layers, read by `request_log`.
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct RequestRecord(Arc<Mutex<RecordFields>>);
 
 impl RequestRecord {
     fn fields(&self) -> MutexGuard<'_, RecordFields> {
-        self.0
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Validated hashes only; never log raw client input.
+    /// Validated hashes only; never log raw client input. Also records it on
+    /// the current span, so call it inside the request span.
     pub fn set_hash(&self, hash: &str) {
         self.fields().hash = Some(hash.to_owned());
         Span::current().record("hash", hash);
     }
 
     pub fn set_access(&self, access: Access) {
-        self.fields().access = Some(access);
+        self.fields().access = access;
     }
 
     pub fn set_outcome(&self, outcome: Outcome) {
@@ -112,37 +115,37 @@ pub async fn request_log(mut request: Request, next: Next) -> Response {
         record,
         method: request.method().clone(),
         started: Instant::now(),
-        logged: false,
+        status: None,
     };
     let span = tracing::info_span!("request", method = %line.method, hash = tracing::field::Empty);
 
     let response = next.run(request).instrument(span).await;
 
-    line.log(Some(response.status()));
+    line.status = Some(response.status());
     response
 }
 
-/// Logs on drop if no response was produced, i.e. the client went away.
+/// Logs the request line on drop. No status means the client went away
+/// before a response.
 struct RequestLine {
     record: RequestRecord,
     method: Method,
     started: Instant,
-    logged: bool,
+    status: Option<StatusCode>,
 }
 
-impl RequestLine {
-    fn log(&mut self, status: Option<StatusCode>) {
-        self.logged = true;
-
+impl Drop for RequestLine {
+    fn drop(&mut self) {
         let duration_ms = u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX);
-        let fields = self.record.fields();
+        let fields = std::mem::take(&mut *self.record.fields());
+        let status = self.status;
         let outcome = match status {
             None => Outcome::Aborted,
             Some(status) => fields
                 .outcome
                 .unwrap_or_else(|| Outcome::from_status(status)),
         };
-        let access = fields.access.map_or("none", Access::as_str);
+        let access = fields.access.as_str();
         let hash = fields.hash.as_deref();
         let bytes = fields.bytes;
         let method = &self.method;
@@ -171,14 +174,6 @@ impl RequestLine {
             request_event!(Level::ERROR);
         } else {
             request_event!(Level::INFO);
-        }
-    }
-}
-
-impl Drop for RequestLine {
-    fn drop(&mut self) {
-        if !self.logged {
-            self.log(None);
         }
     }
 }

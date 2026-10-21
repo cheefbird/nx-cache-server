@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { artifact, uniqueHash } from "../support/artifacts.ts";
 import { MAX_HASH_LENGTH, cachePath } from "../support/client.ts";
 import { type LogLine, jsonLines, requestLines } from "../support/logs.ts";
-import { ERROR_LOG_LEVEL, startServer } from "../support/nx-cache-aws.ts";
+import { ERROR_LOG_LEVEL, type Server, startServer } from "../support/nx-cache-aws.ts";
 import { LOOPBACK } from "../support/ports.ts";
 import { pollUntil } from "../support/process.ts";
 import {
@@ -17,7 +17,7 @@ const JSON_ENV = withVariables(VALID_ENV, { LOG_FORMAT: "json" });
 
 async function onlyRequestLine(
     env: ServerEnv,
-    send: (server: Awaited<ReturnType<typeof startServer>>) => Promise<unknown>,
+    send: (server: Server) => Promise<unknown>,
 ): Promise<LogLine> {
     const server = await startServer(env);
 
@@ -65,7 +65,7 @@ test("an invalid hash is logged without the hash", async () => {
     );
 
     expect(line).toMatchObject({ status: 400, outcome: "invalid", access: "read_write" });
-    expect(line.hash).toBeUndefined();
+    expect(line).not.toHaveProperty("hash");
 });
 
 test("a too-long hash is not logged", async () => {
@@ -74,7 +74,7 @@ test("a too-long hash is not logged", async () => {
     );
 
     expect(line.status).toBe(400);
-    expect(line.hash).toBeUndefined();
+    expect(line).not.toHaveProperty("hash");
 });
 
 test("a percent-encoded hash is logged decoded", async () => {
@@ -181,7 +181,7 @@ test("a request the client abandons is still logged", async () => {
             level: "INFO",
         }),
     ]);
-    expect(lines[0]?.status).toBeUndefined();
+    expect(lines[0]).not.toHaveProperty("status");
 });
 
 test("tokens never reach the logs", async () => {

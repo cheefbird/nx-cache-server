@@ -54,9 +54,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let storage = match S3Storage::new(&cli.storage).await {
         Ok(storage) => storage,
         Err(e) => {
+            tracing::error!(error = %e, "Failed to initialize S3 storage");
             eprintln!();
             eprintln!("Failed to initialize S3 storage: {}", e);
-            tracing::error!(error = %e, "Failed to initialize S3 storage");
             eprintln!();
             eprintln!("Please check your AWS credentials and configuration.");
             std::process::exit(1);
@@ -65,11 +65,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Run server
     let addr = std::net::SocketAddr::new(cli.server.bind_address, cli.server.port);
-    tracing::info!(addr = %addr, "Server starting on {}", addr);
+    tracing::info!(%addr, "Server starting on {}", addr);
     if let Err(e) = run_server(storage, &cli.server).await {
+        tracing::error!(error = %e, "Server error");
         eprintln!();
         eprintln!("Server error: {}", e);
-        tracing::error!(error = %e, "Server error");
         std::process::exit(1);
     }
 

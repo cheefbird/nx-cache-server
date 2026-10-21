@@ -63,7 +63,7 @@ pub async fn run_server<T: StorageProvider + Clone>(
     let addr = std::net::SocketAddr::new(config.bind_address, config.port);
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    tracing::info!(addr = %addr, "Server running on {}", addr);
+    tracing::info!(%addr, "Server running on {}", addr);
     axum::serve(listener, app).await?;
 
     Ok(())

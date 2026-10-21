@@ -23,7 +23,6 @@ pub async fn store_artifact<T: StorageProvider>(
         // Same reason as the 403 in auth_middleware: let the client finish
         // uploading, or it never sees this 409. Keys are content-addressed, so
         // the copy being discarded is byte-identical to the stored one.
-        record.set_outcome(Outcome::Exists);
         crate::server::drain_body(body).await;
         return Ok((StatusCode::CONFLICT, "Cannot override an existing record"));
     }
@@ -38,18 +37,9 @@ pub async fn store_artifact<T: StorageProvider>(
     let cursor = std::io::Cursor::new(bytes);
     let reader_stream = tokio_util::io::ReaderStream::new(cursor);
 
-    match state.storage.store(&hash, reader_stream).await {
-        Ok(()) => {
-            record.set_outcome(Outcome::Stored);
-            record.set_bytes(length);
-        }
-        Err(e) => {
-            if matches!(e, StorageError::AlreadyExists) {
-                record.set_outcome(Outcome::Exists);
-            }
-            return Err(e.into());
-        }
-    }
+    state.storage.store(&hash, reader_stream).await?;
+    record.set_outcome(Outcome::Stored);
+    record.set_bytes(length);
 
     Ok((StatusCode::OK, ""))
 }
@@ -61,19 +51,13 @@ pub async fn retrieve_artifact<T: StorageProvider>(
 ) -> Result<impl IntoResponse, ServerError> {
     validation::validate_hash(&hash)?;
 
-    let retrieved = match state.storage.retrieve(&hash).await {
-        Ok(retrieved) => {
-            record.set_outcome(Outcome::Hit);
-            record.set_bytes(retrieved.content_length.unwrap_or(0));
-            retrieved
+    let retrieved = state.storage.retrieve(&hash).await.inspect_err(|e| {
+        if matches!(e, StorageError::NotFound) {
+            record.set_outcome(Outcome::Miss);
         }
-        Err(e) => {
-            if matches!(e, StorageError::NotFound) {
-                record.set_outcome(Outcome::Miss);
-            }
-            return Err(e.into());
-        }
-    };
+    })?;
+    record.set_outcome(Outcome::Hit);
+    record.set_bytes(retrieved.content_length.unwrap_or(0));
     let stream = tokio_util::io::ReaderStream::new(retrieved.reader);
     let body = Body::from_stream(stream);
 

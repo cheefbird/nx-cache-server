@@ -11,18 +11,9 @@ import { VALID_ENV, withVariables } from "../support/server-env.ts";
 const CLAP_USAGE_EXIT_CODE = 2;
 const DEBUG_IGNORED_WARNING = "DEBUG is set but ignored because RUST_LOG is set";
 
-test("LOG_FORMAT=json makes every stdout line JSON", async () => {
-    const server = await startServer(withVariables(VALID_ENV, { LOG_FORMAT: "json" }));
-
-    const logs = await server.stop();
-
-    expect(jsonLines(logs.stdout)).toContainEqual(
-        expect.objectContaining({ message: expect.stringContaining("Server running on") }),
-    );
-});
-
-test("LOG_FORMAT ignores case", async () => {
-    const server = await startServer(withVariables(VALID_ENV, { LOG_FORMAT: "JSON" }));
+// Uppercase too: LOG_FORMAT ignores case.
+test.each(["json", "JSON"])("LOG_FORMAT=%s makes every stdout line JSON", async (format) => {
+    const server = await startServer(withVariables(VALID_ENV, { LOG_FORMAT: format }));
 
     const logs = await server.stop();
 

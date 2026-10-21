@@ -8,10 +8,11 @@ use tracing_subscriber::{
 };
 
 /// `DEBUG` without `RUST_LOG`: our crates at debug, the rest at info.
-pub const DEBUG_FILTER: &str = "nx_cache_server=debug,nx_cache_aws=debug,info";
+const DEBUG_FILTER: &str = "nx_cache_server=debug,nx_cache_aws=debug,info";
 
 const DEFAULT_FILTER: &str = "info";
 
+#[derive(Debug)]
 pub struct LogFilter {
     pub targets: Targets,
     /// `DEBUG` was set but `RUST_LOG` won.
@@ -25,10 +26,13 @@ pub fn resolve_filter(rust_log: Option<&str>, debug: bool) -> Result<LogFilter, 
             targets: value.parse()?,
             debug_ignored: debug,
         }),
-        None => Ok(LogFilter {
-            targets: if debug { DEBUG_FILTER } else { DEFAULT_FILTER }.parse()?,
-            debug_ignored: false,
-        }),
+        None => {
+            let spec = if debug { DEBUG_FILTER } else { DEFAULT_FILTER };
+            Ok(LogFilter {
+                targets: spec.parse()?,
+                debug_ignored: false,
+            })
+        }
     }
 }
 

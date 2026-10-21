@@ -23,7 +23,7 @@ const NO_HOST_AWS_CONFIG = {
     AWS_SHARED_CREDENTIALS_FILE: devNull,
 };
 
-class Server {
+export class Server {
     readonly port: number;
     private readonly process: RunningProcess;
     private readonly clientTimeoutMs: number;

@@ -296,7 +296,7 @@ impl StorageProvider for S3Storage {
     }
 }
 
-// WARN, not ERROR: the request line is the one ERROR per failed request.
+/// WARN, not ERROR: the request line is the one ERROR per failed request.
 fn warn_s3_failure<E>(operation: &'static str, error: &E)
 where
     E: std::error::Error + ProvideErrorMetadata,
@@ -309,8 +309,8 @@ where
     );
 }
 
-// Each source's message, joined with ": ". `ErrorMetadata` displays as a
-// struct, so only its message is kept.
+/// Each source's message, joined with ": ". `ErrorMetadata` displays as a
+/// struct, so only its message is kept.
 fn error_chain(error: &dyn std::error::Error) -> String {
     let mut chain = error.to_string();
     let mut source = error.source();

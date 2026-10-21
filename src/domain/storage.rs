@@ -13,6 +13,7 @@ pub enum StorageError {
     OperationFailed,
 }
 
+/// A stored object, streamed, with its size when the backend reports one.
 pub struct Retrieved {
     pub reader: Box<dyn AsyncRead + Send + Unpin>,
     pub content_length: Option<u64>,
