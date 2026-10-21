@@ -42,20 +42,26 @@ test("a request without a token logs unauthorized", async () => {
         status: 401,
         outcome: "unauthorized",
         access: "none",
-        level: "INFO",
+        level: "WARN",
     });
 });
 
-test("a read-only upload logs forbidden", async () => {
-    const line = await onlyRequestLine(JSON_ENV, (server) =>
+test("a read-only upload logs forbidden only at debug", async () => {
+    const atInfo = await startServer(JSON_ENV);
+    await atInfo.client("read-only").put(uniqueHash("forbidden"), artifact(1024));
+    const infoLines = requestLines((await atInfo.stop()).stdout);
+
+    const line = await onlyRequestLine(withVariables(JSON_ENV, { DEBUG: "true" }), (server) =>
         server.client("read-only").put(uniqueHash("forbidden"), artifact(1024)),
     );
 
+    expect(infoLines).toEqual([]);
     expect(line).toMatchObject({
         method: "PUT",
         status: 403,
         outcome: "forbidden",
         access: "read_only",
+        level: "DEBUG",
     });
 });
 
@@ -64,7 +70,12 @@ test("an invalid hash is logged without the hash", async () => {
         server.client("read-write").get("a.b"),
     );
 
-    expect(line).toMatchObject({ status: 400, outcome: "invalid", access: "read_write" });
+    expect(line).toMatchObject({
+        status: 400,
+        outcome: "invalid",
+        access: "read_write",
+        level: "WARN",
+    });
     expect(line).not.toHaveProperty("hash");
 });
 

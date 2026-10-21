@@ -5,8 +5,10 @@ import { startServer } from "../support/nx-cache-aws.ts";
 import { withVariables } from "../support/server-env.ts";
 import { e2eServerEnv } from "./storage/shared-storage.ts";
 
-test("each cache outcome is logged with its byte count", async () => {
-    const server = await startServer(withVariables(e2eServerEnv(), { LOG_FORMAT: "json" }));
+test("each cache outcome is logged at debug with its byte count", async () => {
+    const server = await startServer(
+        withVariables(e2eServerEnv(), { LOG_FORMAT: "json", DEBUG: "true" }),
+    );
     const client = server.client("read-write");
     const hash = uniqueHash("outcomes");
     const body = artifact(1024);
@@ -18,11 +20,24 @@ test("each cache outcome is logged with its byte count", async () => {
     const lines = requestLines((await server.stop()).stdout);
 
     expect(lines).toMatchObject([
-        { outcome: "stored", status: 200, bytes: 1024, access: "read_write" },
-        { outcome: "exists", status: 409, bytes: 0 },
-        { outcome: "hit", status: 200, bytes: 1024 },
-        { outcome: "miss", status: 404, bytes: 0 },
+        { outcome: "stored", status: 200, bytes: 1024, access: "read_write", level: "DEBUG" },
+        { outcome: "exists", status: 409, bytes: 0, level: "DEBUG" },
+        { outcome: "hit", status: 200, bytes: 1024, level: "DEBUG" },
+        { outcome: "miss", status: 404, bytes: 0, level: "DEBUG" },
     ]);
+});
+
+test("cache outcomes are not logged at the default level", async () => {
+    const server = await startServer(withVariables(e2eServerEnv(), { LOG_FORMAT: "json" }));
+    const client = server.client("read-write");
+    const hash = uniqueHash("quiet");
+
+    await client.put(hash, artifact(16));
+    await client.put(hash, artifact(16));
+    await client.get(hash);
+    await client.get(uniqueHash("quiet-missing"));
+
+    expect(requestLines((await server.stop()).stdout)).toEqual([]);
 });
 
 test("an S3 error is logged as readable text", async () => {

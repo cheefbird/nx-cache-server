@@ -146,7 +146,7 @@ Then set `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` to the read-only token in PR
 
 ### Logging
 
-The server logs to stdout, one line per request.
+The server logs to stdout, one line per request (routine requests at `debug`).
 
 ```bash
 export LOG_FORMAT="json"   # text (default) or json
@@ -184,16 +184,16 @@ Each request logs a line with the message `request` and these fields:
 | `health` | `GET /health` |
 | `aborted` | Client disconnected before the response; no `status` |
 
-Requests log at `info`, storage failures at `error` and health checks at `debug`. A storage failure also logs an S3 `warn` line with `operation`, `error` and `code`, tagged with the request's hash.
+Each request line's level depends on its outcome: `error` for storage failures, `warn` for `unauthorized` and `invalid`, `info` for `aborted`, and `debug` for routine traffic (`hit`, `miss`, `stored`, `exists`, `forbidden`, `health`). Set `DEBUG=true` to log every request. A storage failure also logs an S3 `warn` line with `operation`, `error` and `code`, tagged with the request's hash.
 
 Text format:
 ```
-2026-10-21T01:47:50.548812Z  INFO nx_cache_server::server::logging: request method=GET hash="14cdc9c4a8af4987cce2" status=200 outcome="hit" access="read_only" bytes=1048576 duration_ms=5
+2026-10-21T01:47:50.548812Z DEBUG nx_cache_server::server::logging: request method=GET hash="14cdc9c4a8af4987cce2" status=200 outcome="hit" access="read_only" bytes=1048576 duration_ms=5
 ```
 
 JSON format:
 ```json
-{"timestamp":"2026-10-21T01:47:51.163412Z","level":"INFO","message":"request","method":"GET","hash":"932ad3fd6176a673686b","status":200,"outcome":"hit","access":"read_only","bytes":1048576,"duration_ms":2,"target":"nx_cache_server::server::logging"}
+{"timestamp":"2026-10-21T01:47:51.163412Z","level":"DEBUG","message":"request","method":"GET","hash":"932ad3fd6176a673686b","status":200,"outcome":"hit","access":"read_only","bytes":1048576,"duration_ms":2,"target":"nx_cache_server::server::logging"}
 ```
 
 ---

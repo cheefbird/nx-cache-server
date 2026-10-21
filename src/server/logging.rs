@@ -168,12 +168,15 @@ impl Drop for RequestLine {
             };
         }
 
-        if outcome == Outcome::Health {
-            request_event!(Level::DEBUG);
-        } else if status.is_some_and(|s| s.is_server_error()) {
+        // Routine traffic stays at DEBUG so the default level shows only what needs attention.
+        if status.is_some_and(|s| s.is_server_error()) {
             request_event!(Level::ERROR);
-        } else {
+        } else if matches!(outcome, Outcome::Unauthorized | Outcome::Invalid) {
+            request_event!(Level::WARN);
+        } else if outcome == Outcome::Aborted {
             request_event!(Level::INFO);
+        } else {
+            request_event!(Level::DEBUG);
         }
     }
 }
