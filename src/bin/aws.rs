@@ -1,6 +1,7 @@
 use clap::Parser;
 use nx_cache_server::domain::config::{ConfigValidator, ServerConfig};
 use nx_cache_server::infra::aws::{AwsStorageConfig, S3Storage};
+use nx_cache_server::logging;
 use nx_cache_server::server::run_server;
 
 #[derive(Parser)]
@@ -16,10 +17,27 @@ struct AwsCli {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logging
-    tracing_subscriber::fmt::init();
-
     let cli = AwsCli::parse();
+
+    // Before config validation, so warnings from the AWS region and
+    // credential chains are logged.
+    let rust_log = std::env::var("RUST_LOG").ok();
+    let filter = match logging::resolve_filter(rust_log.as_deref(), cli.server.debug) {
+        Ok(filter) => filter,
+        Err(e) => {
+            eprintln!("Invalid RUST_LOG: {}", e);
+            std::process::exit(1);
+        }
+    };
+    logging::init(cli.server.log_format, filter.targets);
+    if filter.debug_ignored {
+        let rust_log = rust_log.unwrap_or_default();
+        tracing::warn!(
+            rust_log = %rust_log,
+            "DEBUG is set but ignored because RUST_LOG is set (RUST_LOG={})",
+            rust_log
+        );
+    }
 
     // Validate server configuration
     if let Err(e) = cli.server.validate().await {
@@ -39,6 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => {
             eprintln!();
             eprintln!("Failed to initialize S3 storage: {}", e);
+            tracing::error!(error = %e, "Failed to initialize S3 storage");
             eprintln!();
             eprintln!("Please check your AWS credentials and configuration.");
             std::process::exit(1);
@@ -46,13 +65,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Run server
-    tracing::info!(
-        "Server starting on {}",
-        std::net::SocketAddr::new(cli.server.bind_address, cli.server.port)
-    );
+    let addr = std::net::SocketAddr::new(cli.server.bind_address, cli.server.port);
+    tracing::info!(addr = %addr, "Server starting on {}", addr);
     if let Err(e) = run_server(storage, &cli.server).await {
         eprintln!();
         eprintln!("Server error: {}", e);
+        tracing::error!(error = %e, "Server error");
         std::process::exit(1);
     }
 

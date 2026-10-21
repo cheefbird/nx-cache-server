@@ -1,0 +1,51 @@
+use crate::domain::config::LogFormat;
+use tracing_subscriber::{
+    filter::{ParseError, Targets},
+    fmt,
+    layer::SubscriberExt,
+    util::SubscriberInitExt,
+    Layer,
+};
+
+/// Filter used when `DEBUG` is set and `RUST_LOG` is not: this project's
+/// library and binary at debug, everything else at info.
+pub const DEBUG_FILTER: &str = "nx_cache_server=debug,nx_cache_aws=debug,info";
+
+const DEFAULT_FILTER: &str = "info";
+
+pub struct LogFilter {
+    pub targets: Targets,
+    /// `DEBUG` was set but `RUST_LOG` took precedence.
+    pub debug_ignored: bool,
+}
+
+/// `RUST_LOG` wins over `DEBUG`. An empty `RUST_LOG` counts as unset, since
+/// compose files often declare the variable without a value.
+pub fn resolve_filter(rust_log: Option<&str>, debug: bool) -> Result<LogFilter, ParseError> {
+    match rust_log.filter(|value| !value.is_empty()) {
+        Some(value) => Ok(LogFilter {
+            targets: value.parse()?,
+            debug_ignored: debug,
+        }),
+        None => Ok(LogFilter {
+            targets: if debug { DEBUG_FILTER } else { DEFAULT_FILTER }.parse()?,
+            debug_ignored: false,
+        }),
+    }
+}
+
+pub fn init(format: LogFormat, targets: Targets) {
+    let layer = match format {
+        LogFormat::Text => fmt::layer().boxed(),
+        LogFormat::Json => fmt::layer()
+            .json()
+            .flatten_event(true)
+            .with_current_span(true)
+            .with_span_list(false)
+            .boxed(),
+    };
+
+    tracing_subscriber::registry()
+        .with(layer.with_filter(targets))
+        .init();
+}
