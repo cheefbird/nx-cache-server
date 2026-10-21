@@ -153,6 +153,7 @@ pub struct ServerConfig {
         long,
         env = "LOG_FORMAT",
         value_enum,
+        ignore_case = true,
         default_value_t,
         help = "Log output format"
     )]

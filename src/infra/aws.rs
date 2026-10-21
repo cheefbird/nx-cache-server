@@ -10,7 +10,7 @@ use aws_credential_types::provider::future::ProvideCredentials as ProvideCredent
 use aws_sdk_s3::config::timeout::TimeoutConfig;
 use aws_sdk_s3::config::SharedHttpClient;
 use aws_sdk_s3::config::{Credentials, ProvideCredentials};
-use aws_sdk_s3::error::ProvideErrorMetadata;
+use aws_sdk_s3::error::{ErrorMetadata, ProvideErrorMetadata};
 use aws_sdk_s3::operation::get_object::GetObjectError;
 use aws_sdk_s3::operation::head_object::HeadObjectError;
 use aws_sdk_s3::{config::Region, Client, Config as S3Config};
@@ -264,7 +264,7 @@ impl StorageProvider for S3Storage {
             .send()
             .await
             .map_err(|e| {
-                warn_s3_failure("put_object", &e);
+                warn_s3_failure("put_object", &e.into_service_error());
                 StorageError::OperationFailed
             })?;
 
@@ -309,11 +309,19 @@ where
     );
 }
 
-// Each source's message, joined with ": ".
+// Each source's message, joined with ": ". `ErrorMetadata` displays as a
+// struct, so only its message is kept.
 fn error_chain(error: &dyn std::error::Error) -> String {
     let mut chain = error.to_string();
     let mut source = error.source();
     while let Some(cause) = source {
+        if let Some(meta) = cause.downcast_ref::<ErrorMetadata>() {
+            if let Some(message) = meta.message() {
+                chain.push_str(": ");
+                chain.push_str(message);
+            }
+            break;
+        }
         chain.push_str(": ");
         chain.push_str(&cause.to_string());
         source = cause.source();

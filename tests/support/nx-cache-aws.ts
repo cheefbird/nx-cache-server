@@ -38,6 +38,10 @@ class Server {
         return new CacheClient(`http://${LOOPBACK}:${this.port}`, token, this.clientTimeoutMs);
     }
 
+    output(): Logs {
+        return this.process.outputSoFar();
+    }
+
     stop(): Promise<Logs> {
         return this.process.stop();
     }

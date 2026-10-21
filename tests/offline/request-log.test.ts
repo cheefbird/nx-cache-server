@@ -1,8 +1,10 @@
 import { expect, test } from "vitest";
 import { artifact, uniqueHash } from "../support/artifacts.ts";
-import { MAX_HASH_LENGTH } from "../support/client.ts";
+import { MAX_HASH_LENGTH, cachePath } from "../support/client.ts";
 import { type LogLine, jsonLines, requestLines } from "../support/logs.ts";
 import { ERROR_LOG_LEVEL, startServer } from "../support/nx-cache-aws.ts";
+import { LOOPBACK } from "../support/ports.ts";
+import { pollUntil } from "../support/process.ts";
 import {
     READ_ONLY_TOKEN,
     READ_WRITE_TOKEN,
@@ -152,6 +154,34 @@ test("the S3 warning gives the error without a debug dump", async () => {
     expect(warning?.error).toEqual(expect.any(String));
     // Debug struct syntax, e.g. `Unhandled { source: … }`.
     expect(warning?.error).not.toContain(" { ");
+});
+
+test("a request the client abandons is still logged", async () => {
+    const server = await startServer(JSON_ENV);
+    const hash = uniqueHash("abandoned");
+
+    // Gives up long before the unreachable storage times out.
+    await fetch(`http://${LOOPBACK}:${server.port}${cachePath(hash)}`, {
+        headers: { authorization: `Bearer ${READ_WRITE_TOKEN}` },
+        signal: AbortSignal.timeout(300),
+    }).catch(() => undefined);
+    await pollUntil(
+        5_000,
+        "no request line",
+        () => requestLines(server.output().stdout).length > 0,
+    );
+    const lines = requestLines((await server.stop()).stdout);
+
+    expect(lines).toEqual([
+        expect.objectContaining({
+            method: "GET",
+            hash,
+            outcome: "aborted",
+            access: "read_write",
+            level: "INFO",
+        }),
+    ]);
+    expect(lines[0]?.status).toBeUndefined();
 });
 
 test("tokens never reach the logs", async () => {

@@ -21,6 +21,16 @@ test("LOG_FORMAT=json makes every stdout line JSON", async () => {
     );
 });
 
+test("LOG_FORMAT ignores case", async () => {
+    const server = await startServer(withVariables(VALID_ENV, { LOG_FORMAT: "JSON" }));
+
+    const logs = await server.stop();
+
+    expect(jsonLines(logs.stdout)).toContainEqual(
+        expect.objectContaining({ message: expect.stringContaining("Server running on") }),
+    );
+});
+
 test("an unknown LOG_FORMAT is a usage error", async () => {
     const exited = await runServerUntilExit(withVariables(VALID_ENV, { LOG_FORMAT: "yaml" }));
 

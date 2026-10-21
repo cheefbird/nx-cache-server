@@ -154,7 +154,8 @@ export RUST_LOG="info"     # e.g. "warn" or "info,nx_cache_server=debug"
 export DEBUG="true"        # debug logs for this server; ignored when RUST_LOG is set
 ```
 
-- `RUST_LOG` is a comma-separated list of `level` or `target=level` entries. Full `env_filter` syntax (span filters, regexes) is not supported. Unset or empty means `info`. An invalid value stops the server at startup.
+- `RUST_LOG` is a comma-separated list of `level` or `target=level` entries. Full `env_filter` syntax (span filters, regexes) is not supported. Unset or empty means `info`, or the `DEBUG` filter when `DEBUG` is set. An invalid value stops the server at startup.
+- A level below `info` for this server (e.g. `RUST_LOG=warn`) also hides the `Server running on` line. An unknown word is read as a target name, so a typo like `RUST_LOG=warning` silences all output.
 - `DEBUG=true` (also `1`, `yes`, `on`) logs this server at `debug` and everything else at `info`. If `RUST_LOG` is also set, `RUST_LOG` wins and the server logs a warning.
 - Tokens, the `Authorization` header and request bodies are never logged.
 
@@ -181,6 +182,7 @@ Each request logs a line with the message `request` and these fields:
 | `invalid` | Bad hash, unknown route or aborted upload (4xx) |
 | `error` | Storage failure (5xx) |
 | `health` | `GET /health` |
+| `aborted` | Client disconnected before the response; no `status` |
 
 Requests log at `info`, storage failures at `error` and health checks at `debug`. A storage failure also logs an S3 `warn` line with `operation`, `error` and `code`, tagged with the request's hash.
 

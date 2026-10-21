@@ -1,4 +1,9 @@
-use axum::{extract::Request, http::StatusCode, middleware::Next, response::Response};
+use axum::{
+    extract::Request,
+    http::{Method, StatusCode},
+    middleware::Next,
+    response::Response,
+};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
 use tracing::{Instrument, Level, Span};
@@ -29,6 +34,7 @@ pub enum Outcome {
     Invalid,
     Error,
     Health,
+    Aborted,
 }
 
 impl Outcome {
@@ -43,6 +49,7 @@ impl Outcome {
             Outcome::Invalid => "invalid",
             Outcome::Error => "error",
             Outcome::Health => "health",
+            Outcome::Aborted => "aborted",
         }
     }
 
@@ -101,47 +108,77 @@ pub async fn request_log(mut request: Request, next: Next) -> Response {
     let record = RequestRecord::default();
     request.extensions_mut().insert(record.clone());
 
-    let method = request.method().clone();
-    let span = tracing::info_span!("request", method = %method, hash = tracing::field::Empty);
-    let started = Instant::now();
+    let mut line = RequestLine {
+        record,
+        method: request.method().clone(),
+        started: Instant::now(),
+        logged: false,
+    };
+    let span = tracing::info_span!("request", method = %line.method, hash = tracing::field::Empty);
 
     let response = next.run(request).instrument(span).await;
 
-    let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-    let status = response.status();
-    let fields = record.fields();
-    let outcome = fields
-        .outcome
-        .unwrap_or_else(|| Outcome::from_status(status));
-    let access = fields.access.map_or("none", Access::as_str);
-    let hash = fields.hash.as_deref();
-    let bytes = fields.bytes;
-
-    // `event!` needs a const level.
-    macro_rules! request_event {
-        ($level:expr) => {
-            tracing::event!(
-                $level,
-                method = %method,
-                hash,
-                status = status.as_u16(),
-                outcome = outcome.as_str(),
-                access,
-                bytes,
-                duration_ms,
-                "request"
-            )
-        };
-    }
-
-    if outcome == Outcome::Health {
-        request_event!(Level::DEBUG);
-    } else if status.is_server_error() {
-        request_event!(Level::ERROR);
-    } else {
-        request_event!(Level::INFO);
-    }
-
-    drop(fields);
+    line.log(Some(response.status()));
     response
+}
+
+/// Logs on drop if no response was produced, i.e. the client went away.
+struct RequestLine {
+    record: RequestRecord,
+    method: Method,
+    started: Instant,
+    logged: bool,
+}
+
+impl RequestLine {
+    fn log(&mut self, status: Option<StatusCode>) {
+        self.logged = true;
+
+        let duration_ms = u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let fields = self.record.fields();
+        let outcome = match status {
+            None => Outcome::Aborted,
+            Some(status) => fields
+                .outcome
+                .unwrap_or_else(|| Outcome::from_status(status)),
+        };
+        let access = fields.access.map_or("none", Access::as_str);
+        let hash = fields.hash.as_deref();
+        let bytes = fields.bytes;
+        let method = &self.method;
+        let status_code = status.map(|s| s.as_u16());
+
+        // `event!` needs a const level.
+        macro_rules! request_event {
+            ($level:expr) => {
+                tracing::event!(
+                    $level,
+                    method = %method,
+                    hash,
+                    status = status_code,
+                    outcome = outcome.as_str(),
+                    access,
+                    bytes,
+                    duration_ms,
+                    "request"
+                )
+            };
+        }
+
+        if outcome == Outcome::Health {
+            request_event!(Level::DEBUG);
+        } else if status.is_some_and(|s| s.is_server_error()) {
+            request_event!(Level::ERROR);
+        } else {
+            request_event!(Level::INFO);
+        }
+    }
+}
+
+impl Drop for RequestLine {
+    fn drop(&mut self) {
+        if !self.logged {
+            self.log(None);
+        }
+    }
 }

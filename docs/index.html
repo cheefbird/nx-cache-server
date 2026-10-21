@@ -350,7 +350,8 @@ export RUST_LOG="info"     # e.g. "warn" or "info,nx_cache_server=debug"
 export DEBUG="true"        # debug logs for this server; ignored when RUST_LOG is set</code>
                     </div>
                     <ul class="list-disc pl-6 text-gray-600 mt-4 space-y-2">
-                        <li><code>RUST_LOG</code> is a comma-separated list of <code>level</code> or <code>target=level</code> entries. Full <code>env_filter</code> syntax (span filters, regexes) is not supported. Unset or empty means <code>info</code>. An invalid value stops the server at startup.</li>
+                        <li><code>RUST_LOG</code> is a comma-separated list of <code>level</code> or <code>target=level</code> entries. Full <code>env_filter</code> syntax (span filters, regexes) is not supported. Unset or empty means <code>info</code>, or the <code>DEBUG</code> filter when <code>DEBUG</code> is set. An invalid value stops the server at startup.</li>
+                        <li>A level below <code>info</code> for this server (e.g. <code>RUST_LOG=warn</code>) also hides the <code>Server running on</code> line. An unknown word is read as a target name, so a typo like <code>RUST_LOG=warning</code> silences all output.</li>
                         <li><code>DEBUG=true</code> (also <code>1</code>, <code>yes</code>, <code>on</code>) logs this server at <code>debug</code> and everything else at <code>info</code>. If <code>RUST_LOG</code> is also set, <code>RUST_LOG</code> wins and the server logs a warning.</li>
                         <li>Tokens, the <code>Authorization</code> header and request bodies are never logged.</li>
                     </ul>
@@ -384,6 +385,7 @@ export DEBUG="true"        # debug logs for this server; ignored when RUST_LOG i
                             <tr class="border-t"><td class="py-2 pr-4"><code>invalid</code></td><td class="py-2">Bad hash, unknown route or aborted upload (4xx)</td></tr>
                             <tr class="border-t"><td class="py-2 pr-4"><code>error</code></td><td class="py-2">Storage failure (5xx)</td></tr>
                             <tr class="border-t"><td class="py-2 pr-4"><code>health</code></td><td class="py-2"><code>GET /health</code></td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>aborted</code></td><td class="py-2">Client disconnected before the response; no <code>status</code></td></tr>
                             </tbody>
                         </table>
                     </div>
